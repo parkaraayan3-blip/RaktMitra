@@ -73,10 +73,11 @@ export async function POST(request: NextRequest) {
         matches,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('[match] Error:', error);
+    const errorMessage = error?.message || 'Internal server error during matching.';
     return NextResponse.json(
-      { success: false, error: 'Internal server error during matching.' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }

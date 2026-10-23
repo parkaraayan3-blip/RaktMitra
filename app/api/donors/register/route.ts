@@ -84,10 +84,11 @@ export async function POST(request: NextRequest) {
         message: 'Donor registered successfully.',
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('[register] Error:', error);
+    const errorMessage = error?.message || 'Internal server error during registration.';
     return NextResponse.json(
-      { success: false, error: 'Internal server error during registration.' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }
