@@ -33,6 +33,53 @@ export const extractionSchema = z.object({
 
 export type ExtractionResult = z.infer<typeof extractionSchema>;
 
+// ── Donor Registration Schema ──
+export const donorRegistrationSchema = z.object({
+  fullName: z.string().min(2, 'Full name must be at least 2 characters').max(100),
+  phone: z.string().regex(/^(\+91[\-\s]?)?[6-9]\d{9}$/, 'Please provide a valid 10-digit Indian mobile number'),
+  email: z.string().email('Invalid email address'),
+  bloodGroup: z.enum(BLOOD_GROUPS),
+  dateOfBirth: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be in YYYY-MM-DD format')
+    .refine(
+      (dob) => {
+        const birthDate = new Date(dob);
+        if (isNaN(birthDate.getTime())) return false;
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        return age >= 18 && age <= 65;
+      },
+      { message: 'Donor must be between 18 and 65 years old to donate blood' }
+    ),
+  locality: z.string().min(2, 'Locality is required'),
+  city: z.string().min(2, 'City is required'),
+  location: z
+    .object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+    })
+    .nullable()
+    .optional(),
+  lastDonationDate: z.string().nullable().optional(),
+  donationFrequency: z.enum(['first_time', 'occasional', 'regular']).optional().default('first_time'),
+  isAvailable: z.boolean().optional().default(true),
+  whatsappOptIn: z.literal(true, {
+    errorMap: () => ({ message: 'WhatsApp opt-in is required' }),
+  }),
+  privacyConsent: z.literal(true, {
+    errorMap: () => ({ message: 'Privacy consent is required' }),
+  }),
+  screeningDisclosures: z.array(z.string()).optional().default([]),
+  medicalNotes: z.string().max(500).optional().default(''),
+});
+
+export type DonorRegistrationInput = z.infer<typeof donorRegistrationSchema>;
+
 // ── Donor Registration ──
 export interface DonorProfile {
   uid: string;

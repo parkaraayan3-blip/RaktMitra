@@ -3,6 +3,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://raktmitra.vercel.app'),
   title: 'RaktMitra AI | When Every Second Matters',
   description:
     'AI-assisted emergency blood donor coordination. Transform unstructured emergency messages into coordinated action with Gemini-powered extraction and WhatsApp outreach.',

@@ -2,13 +2,25 @@
 // API Route: /api/extract
 // ──────────────────────────────────────────────
 // Accepts a raw emergency message and returns structured extraction via Gemini.
-// Validates output with Zod schema before returning.
+// High-efficiency & resilient implementation:
+// 1. Sliding window rate limiting to protect API quota.
+// 2. In-memory response caching for duplicate messages.
+// 3. Fallback cascade across Gemini model versions.
+// 4. Strict Zod schema validation.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, type GenerateContentResult } from '@google/generative-ai';
-import { extractionSchema, type ExtractionResult } from '@/lib/types';
+import { extractionSchema } from '@/lib/types';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// In-memory cache for emergency extractions (TTL 5 minutes)
+interface CacheEntry {
+  data: any;
+  expiresAt: number;
+}
+const extractionCache = new Map<string, CacheEntry>();
 
 const SYSTEM_PROMPT = `You are RaktMitra AI, an emergency blood request parsing system used in India.
 
@@ -42,7 +54,17 @@ You MUST respond with valid JSON matching this exact schema:
 
 export async function POST(request: NextRequest) {
   try {
-    // Validate API key
+    // 1. Rate limiting
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';
+    const rateCheck = checkRateLimit(`extract_${clientIp}`, 15, 60 * 1000);
+    if (!rateCheck.success) {
+      return NextResponse.json(
+        { success: false, error: 'Extraction rate limit exceeded. Please wait a moment.' },
+        { status: 429 }
+      );
+    }
+
+    // 2. Validate API key
     if (!GEMINI_API_KEY) {
       return NextResponse.json(
         { success: false, error: 'Gemini API key not configured. Set GEMINI_API_KEY in environment variables.' },
@@ -50,7 +72,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse request body
+    // 3. Parse request body
     const body = await request.json();
     const rawMessage = body?.message;
 
@@ -61,14 +83,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (rawMessage.length > 2000) {
+    const trimmedMessage = rawMessage.trim();
+    if (trimmedMessage.length > 2000) {
       return NextResponse.json(
         { success: false, error: 'Message too long. Maximum 2000 characters.' },
         { status: 400 }
       );
     }
 
-    // Call Gemini with model fallbacks (gemini-3.8-flash, gemini-2.5-flash, gemini-1.5-flash)
+    // 4. Cache check (avoids redundant Gemini calls for identical messages)
+    const cacheKey = trimmedMessage.toLowerCase();
+    const cached = extractionCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return NextResponse.json({
+        success: true,
+        data: cached.data,
+        cached: true,
+      });
+    }
+
+    // 5. Call Gemini with fallback cascade
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
 
@@ -82,16 +116,17 @@ export async function POST(request: NextRequest) {
           generationConfig: {
             responseMimeType: 'application/json',
             temperature: 0.1,
+            maxOutputTokens: 1024,
           },
         });
         result = await model.generateContent([
           { text: SYSTEM_PROMPT },
-          { text: `Emergency message to parse:\n\n"${rawMessage}"` },
+          { text: `Emergency message to parse:\n\n"${trimmedMessage}"` },
         ]);
         if (result) break;
       } catch (err: any) {
         lastError = err;
-        console.warn(`[extract] Model ${modelName} failed, trying next fallback:`, err?.message || err);
+        console.warn(`[extract] Model ${modelName} failed, attempting next candidate:`, err?.message || err);
       }
     }
 
@@ -101,7 +136,7 @@ export async function POST(request: NextRequest) {
 
     const responseText = result.response.text();
 
-    // Parse and validate with Zod
+    // 6. Parse and validate with Zod
     let parsed: unknown;
     try {
       parsed = JSON.parse(responseText);
@@ -125,6 +160,12 @@ export async function POST(request: NextRequest) {
         { status: 502 }
       );
     }
+
+    // Cache valid result for 5 minutes
+    extractionCache.set(cacheKey, {
+      data: validation.data,
+      expiresAt: Date.now() + 5 * 60 * 1000,
+    });
 
     return NextResponse.json({
       success: true,

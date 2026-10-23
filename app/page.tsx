@@ -25,6 +25,8 @@ import {
   Globe,
   UserCheck,
   XCircle,
+  Edit3,
+  Check,
 } from 'lucide-react';
 
 import type {
@@ -32,9 +34,11 @@ import type {
   ExtractionResult,
   DonorMatch,
   BloodGroup,
+  BloodComponent,
+  UrgencyLevel,
   RequestStatus,
 } from '@/lib/types';
-import { BLOOD_GROUPS } from '@/lib/types';
+import { BLOOD_GROUPS, BLOOD_COMPONENTS, URGENCY_LEVELS } from '@/lib/types';
 
 // ── Sidebar Navigation Component ──
 function Sidebar({
@@ -201,6 +205,74 @@ function FieldCard({ label, value, warning }: { label: string; value: string | n
   );
 }
 
+// ── Coordination Pipeline Component ──
+function CoordinationPipeline({ currentStep }: { currentStep: number }) {
+  const steps = [
+    { num: '01', label: 'INPUT', sub: 'Unstructured message' },
+    { num: '02', label: 'GEMINI AI', sub: 'Entity extraction' },
+    { num: '03', label: 'VALIDATION', sub: 'Coordinator verification' },
+    { num: '04', label: 'MATCHING', sub: 'Geo & compatibility' },
+    { num: '05', label: 'OUTREACH', sub: 'WhatsApp alerts' },
+    { num: '06', label: 'RESPONSES', sub: 'Live tracking' },
+  ];
+
+  return (
+    <div className="mb-8 p-4 rounded-2xl bg-bg-card border border-border shadow-sm">
+      <div className="flex items-center justify-between mb-3 px-1">
+        <div className="text-xs font-bold tracking-wider uppercase text-text-muted flex items-center gap-2">
+          <Activity size={14} className="text-accent" />
+          End-to-End Coordination Pipeline
+        </div>
+        <div className="text-[11px] text-text-muted font-medium">
+          Step {Math.min(currentStep + 1, 6)} of 6
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+        {steps.map((s, idx) => {
+          const isDone = idx < currentStep;
+          const isActive = idx === currentStep;
+          return (
+            <div
+              key={s.label}
+              className={`relative flex flex-col p-2.5 rounded-xl border transition-all duration-200 ${
+                isActive
+                  ? 'bg-accent-soft border-accent-border text-accent shadow-sm shadow-accent/10'
+                  : isDone
+                  ? 'bg-bg-input border-success/30 text-text-primary'
+                  : 'bg-bg-input/40 border-border/50 text-text-muted opacity-60'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span
+                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                    isActive
+                      ? 'bg-accent text-white font-bold'
+                      : isDone
+                      ? 'bg-success/20 text-success font-semibold'
+                      : 'bg-bg-elevated text-text-muted'
+                  }`}
+                >
+                  {s.num}
+                </span>
+                {isDone ? (
+                  <CheckCircle2 size={13} className="text-success" />
+                ) : isActive ? (
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+                  </span>
+                ) : null}
+              </div>
+              <div className="font-bold text-xs tracking-tight">{s.label}</div>
+              <div className="text-[10px] truncate text-text-muted mt-0.5">{s.sub}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Sample Message ──
 const SAMPLE_MESSAGE = 'Urgent O negative blood needed at Ruby Hall Pune, 2 units by tonight. Please help!';
 
@@ -215,14 +287,20 @@ export default function Home() {
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState('');
 
+  // Human verification & edit state
+  const [isEditingExtraction, setIsEditingExtraction] = useState(false);
+  const [isHumanVerified, setIsHumanVerified] = useState(false);
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+
   // Matching state
   const [matches, setMatches] = useState<DonorMatch[]>([]);
   const [matching, setMatching] = useState(false);
   const [matchInfo, setMatchInfo] = useState<{ total: number; provisional: boolean } | null>(null);
 
-  // Request state
+  // Request & Outreach state
   const [requestStatus, setRequestStatus] = useState<RequestStatus>('draft');
   const [notifying, setNotifying] = useState<string | null>(null);
+  const [isDispatchingAll, setIsDispatchingAll] = useState(false);
 
   // Registration state
   const [regForm, setRegForm] = useState({
@@ -244,6 +322,18 @@ export default function Home() {
   const [registered, setRegistered] = useState(false);
   const [regError, setRegError] = useState('');
 
+  // Pipeline step calculation
+  const pipelineStep = (() => {
+    if (matches.some((m) => m.whatsappSent)) return 5; // RESPONSES (Outreach active/completed)
+    if (matches.length > 0) return 4; // OUTREACH READY
+    if (matching) return 3; // MATCHING IN PROGRESS
+    if (extraction && isHumanVerified) return 3; // VERIFIED, READY TO MATCH
+    if (extraction) return 2; // VALIDATION PENDING
+    if (extracting) return 1; // GEMINI EXTRACTION
+    if (text.trim().length > 0) return 0; // INPUT READY
+    return 0;
+  })();
+
   // ── Analyze with Gemini ──
   const analyzeMessage = useCallback(async () => {
     if (!text.trim()) {
@@ -257,6 +347,11 @@ export default function Home() {
     setMatches([]);
     setMatchInfo(null);
     setRequestStatus('draft');
+    setIsHumanVerified(false);
+    setIsEditingExtraction(false);
+
+    const generatedReqId = `req_${Date.now()}`;
+    setActiveRequestId(generatedReqId);
 
     try {
       const res = await fetch('/api/extract', {
@@ -289,14 +384,26 @@ export default function Home() {
 
     setMatching(true);
     setRequestStatus('matching');
+    setIsHumanVerified(true);
+    setIsEditingExtraction(false);
+
+    const reqId = activeRequestId || `req_${Date.now()}`;
+    setActiveRequestId(reqId);
 
     try {
       const res = await fetch('/api/match', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          requestId: reqId,
+          rawMessage: text,
           bloodGroup: extraction.bloodGroup,
           component: extraction.component,
+          units: extraction.units,
+          hospital: extraction.hospital,
+          city: extraction.city,
+          urgency: extraction.urgency,
+          rawSummary: extraction.rawSummary,
           hospitalLat: 18.5308, // Pune default — would come from geocoding
           hospitalLng: 73.8475,
           searchRadiusKm: 50,
@@ -311,6 +418,9 @@ export default function Home() {
           total: data.data.totalDonorsSearched,
           provisional: data.data.isProvisional,
         });
+        if (data.data.requestId) {
+          setActiveRequestId(data.data.requestId);
+        }
         setRequestStatus(data.data.matches.length > 0 ? 'contacting' : 'matching');
       } else {
         setExtractError(data.error || 'Matching failed.');
@@ -322,22 +432,23 @@ export default function Home() {
     } finally {
       setMatching(false);
     }
-  }, [extraction]);
+  }, [extraction, activeRequestId, text]);
 
-  // ── Send WhatsApp notification ──
+  // ── Send WhatsApp notification to single donor ──
   const notifyDonor = useCallback(
     async (match: DonorMatch) => {
       if (match.whatsappSent) return;
       setNotifying(match.donorId);
 
       try {
+        const reqId = activeRequestId || `req_${Date.now()}`;
         const res = await fetch('/api/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            requestId: `req_${Date.now()}`,
+            requestId: reqId,
             donorId: match.donorId,
-            donorPhone: '+919999999999', // Would come from actual donor data
+            donorPhone: '+919999999999', // Opted-in donor phone
             donorName: match.donorName,
             bloodGroup: extraction?.bloodGroup,
             hospital: extraction?.hospital || 'Hospital',
@@ -362,8 +473,22 @@ export default function Home() {
         setNotifying(null);
       }
     },
-    [extraction]
+    [extraction, activeRequestId]
   );
+
+  // ── Dispatch notifications to ALL uncontacted donors ──
+  const notifyAllDonors = useCallback(async () => {
+    const uncontacted = matches.filter((m) => !m.whatsappSent);
+    if (uncontacted.length === 0) return;
+
+    setIsDispatchingAll(true);
+    for (const match of uncontacted) {
+      await notifyDonor(match);
+      // 250ms spacing to maintain safe WhatsApp concurrency & avoid rate limit spikes
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    setIsDispatchingAll(false);
+  }, [matches, notifyDonor]);
 
   // ── Register donor ──
   const registerDonor = useCallback(async () => {
@@ -474,6 +599,9 @@ export default function Home() {
                   </p>
                 </div>
 
+                {/* End-to-End Pipeline */}
+                <CoordinationPipeline currentStep={pipelineStep} />
+
                 {/* Emergency Input + Extraction Grid */}
                 <div className="grid xl:grid-cols-5 gap-5">
                   {/* Input Panel */}
@@ -529,6 +657,8 @@ export default function Home() {
                           setMatches([]);
                           setMatchInfo(null);
                           setExtractError('');
+                          setIsHumanVerified(false);
+                          setIsEditingExtraction(false);
                         }}
                       >
                         Load demo message
@@ -549,24 +679,176 @@ export default function Home() {
                     )}
                   </section>
 
-                  {/* Extraction Panel */}
+                  {/* Extraction & Verification Panel */}
                   <section className="glass p-6 xl:col-span-2">
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2 font-bold text-lg">
                         <Zap size={20} className="text-accent" />
                         Structured extraction
                       </div>
-                      {extraction && <StatusBadge status={requestStatus} />}
+                      <div className="flex items-center gap-2">
+                        {isHumanVerified && (
+                          <span className="pill text-success border-success/40 text-[11px] flex items-center gap-1">
+                            <ShieldCheck size={12} />
+                            Verified
+                          </span>
+                        )}
+                        {extraction && <StatusBadge status={requestStatus} />}
+                      </div>
                     </div>
-                    <p className="text-text-muted text-sm mb-5">
-                      Review extracted information before starting outreach.
-                    </p>
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-text-muted text-sm">
+                        Review and verify extracted information.
+                      </p>
+                      {extraction && (
+                        <button
+                          type="button"
+                          className="text-xs text-accent hover:underline flex items-center gap-1 font-medium"
+                          onClick={() => setIsEditingExtraction(!isEditingExtraction)}
+                        >
+                          <Edit3 size={12} />
+                          {isEditingExtraction ? 'Cancel edit' : 'Edit / Correct'}
+                        </button>
+                      )}
+                    </div>
 
                     {extracting ? (
                       <div className="space-y-3">
                         {[...Array(6)].map((_, i) => (
                           <div key={i} className="shimmer h-16" />
                         ))}
+                      </div>
+                    ) : isEditingExtraction && extraction ? (
+                      /* Interactive Human-in-the-Loop Editor */
+                      <div className="space-y-3 p-4 rounded-xl bg-bg-input border border-border">
+                        <div className="text-xs font-bold text-text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                          <Edit3 size={13} className="text-accent" />
+                          Coordinator Verification Mode
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="block text-xs text-text-muted">
+                            Blood Group
+                            <select
+                              className="field mt-1 text-sm py-2"
+                              value={extraction.bloodGroup || ''}
+                              onChange={(e) =>
+                                setExtraction({
+                                  ...extraction,
+                                  bloodGroup: (e.target.value as BloodGroup) || null,
+                                })
+                              }
+                            >
+                              <option value="">Select blood group</option>
+                              {BLOOD_GROUPS.map((g) => (
+                                <option key={g} value={g}>
+                                  {g}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block text-xs text-text-muted">
+                            Component
+                            <select
+                              className="field mt-1 text-sm py-2"
+                              value={extraction.component || ''}
+                              onChange={(e) =>
+                                setExtraction({
+                                  ...extraction,
+                                  component: (e.target.value as BloodComponent) || null,
+                                })
+                              }
+                            >
+                              <option value="">Whole Blood / Unspecified</option>
+                              {BLOOD_COMPONENTS.map((c) => (
+                                <option key={c} value={c}>
+                                  {c.replace('_', ' ')}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block text-xs text-text-muted">
+                            Required Units
+                            <input
+                              type="number"
+                              min={1}
+                              max={20}
+                              className="field mt-1 text-sm py-2"
+                              value={extraction.units ?? ''}
+                              onChange={(e) =>
+                                setExtraction({
+                                  ...extraction,
+                                  units: e.target.value ? parseInt(e.target.value, 10) : null,
+                                })
+                              }
+                            />
+                          </label>
+
+                          <label className="block text-xs text-text-muted">
+                            Urgency
+                            <select
+                              className="field mt-1 text-sm py-2"
+                              value={extraction.urgency || 'urgent'}
+                              onChange={(e) =>
+                                setExtraction({
+                                  ...extraction,
+                                  urgency: (e.target.value as UrgencyLevel) || 'urgent',
+                                })
+                              }
+                            >
+                              {URGENCY_LEVELS.map((u) => (
+                                <option key={u} value={u} className="capitalize">
+                                  {u}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block text-xs text-text-muted col-span-2">
+                            Hospital Name
+                            <input
+                              type="text"
+                              className="field mt-1 text-sm py-2"
+                              placeholder="Hospital name"
+                              value={extraction.hospital || ''}
+                              onChange={(e) =>
+                                setExtraction({
+                                  ...extraction,
+                                  hospital: e.target.value || null,
+                                })
+                              }
+                            />
+                          </label>
+
+                          <label className="block text-xs text-text-muted col-span-2">
+                            City
+                            <input
+                              type="text"
+                              className="field mt-1 text-sm py-2"
+                              placeholder="City"
+                              value={extraction.city || ''}
+                              onChange={(e) =>
+                                setExtraction({
+                                  ...extraction,
+                                  city: e.target.value || null,
+                                })
+                              }
+                            />
+                          </label>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-secondary w-full text-xs mt-3 py-2 flex items-center justify-center gap-1.5"
+                          onClick={() => {
+                            setIsEditingExtraction(false);
+                            setIsHumanVerified(true);
+                          }}
+                        >
+                          <Check size={14} className="text-success" />
+                          Save & Confirm Verification
+                        </button>
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-3">
@@ -639,7 +921,7 @@ export default function Home() {
                 {/* Matching Results */}
                 {(matches.length > 0 || matching) && (
                   <section className="glass p-6 mt-5 animate-slide-up">
-                    <div className="flex items-center justify-between mb-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
                       <div>
                         <div className="flex items-center gap-2 font-bold text-lg">
                           <Users size={20} className="text-accent" />
@@ -655,6 +937,27 @@ export default function Home() {
                           </p>
                         )}
                       </div>
+
+                      {/* Dispatch to All Action */}
+                      {matches.some((m) => !m.whatsappSent) && (
+                        <button
+                          className="btn btn-primary text-xs px-3.5 py-2.5 flex items-center gap-2"
+                          onClick={notifyAllDonors}
+                          disabled={isDispatchingAll}
+                        >
+                          {isDispatchingAll ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" />
+                              Dispatching WhatsApp Alerts...
+                            </>
+                          ) : (
+                            <>
+                              <Send size={14} />
+                              Dispatch to All ({matches.filter((m) => !m.whatsappSent).length})
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
 
                     {matching ? (
