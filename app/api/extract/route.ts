@@ -114,10 +114,11 @@ export async function POST(request: NextRequest) {
       success: true,
       data: validation.data,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('[extract] Error:', error);
+    const errorMessage = error?.message || 'Internal server error during extraction.';
     return NextResponse.json(
-      { success: false, error: 'Internal server error during extraction.' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }
