@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import Image from 'next/image';
 import {
   Activity,
   ArrowRight,
@@ -71,8 +72,15 @@ function Sidebar({
 
         {/* Brand */}
         <div className="flex items-center gap-3 mb-10">
-          <div className="bg-gradient-to-br from-accent to-red-600 rounded-2xl p-2.5 shadow-lg shadow-accent/20">
-            <Heart size={22} className="text-white" fill="white" />
+          <div className="relative w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-accent/20 shrink-0 border border-border bg-bg-elevated">
+            <Image
+              src="/logo.png"
+              alt="RaktMitra AI Official Logo"
+              width={40}
+              height={40}
+              className="w-full h-full object-cover"
+              priority
+            />
           </div>
           <div>
             <div className="font-extrabold text-xl tracking-tight">
@@ -413,6 +421,15 @@ export default function Home() {
             >
               <Menu size={20} />
             </button>
+            <div className="lg:hidden w-7 h-7 rounded-lg overflow-hidden border border-border shrink-0 shadow-sm">
+              <Image
+                src="/logo.png"
+                alt="RaktMitra Logo"
+                width={28}
+                height={28}
+                className="w-full h-full object-cover"
+              />
+            </div>
             <div className="text-sm">
               <span className="text-text-muted">RaktMitra / </span>
               <span className="text-text-primary font-medium">
@@ -1223,8 +1240,16 @@ export default function Home() {
         <footer className="border-t border-border px-5 lg:px-8 py-5 mt-auto">
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
             <div className="flex items-center gap-2">
-              <Heart size={12} className="text-accent" />
-              RaktMitra AI · Emergency coordination platform
+              <div className="w-4 h-4 rounded overflow-hidden shrink-0">
+                <Image
+                  src="/logo.png"
+                  alt="RaktMitra Logo"
+                  width={16}
+                  height={16}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <span>RaktMitra AI · Emergency coordination platform</span>
             </div>
             <div>Not a substitute for emergency medical services · Always call 108 for emergencies</div>
           </div>
