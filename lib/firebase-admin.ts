@@ -34,15 +34,31 @@ function getAdminApp() {
     console.warn(
       '[firebase-admin] FIREBASE_SERVICE_ACCOUNT_KEY not set and no local key file found. Admin SDK will not be available.'
     );
-    // Initialize without credentials for dev — will fail on actual Firestore calls
     return initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'raktmitra-1c5ea' });
   }
 
   try {
-    const serviceAccount = JSON.parse(serviceAccountKey) as ServiceAccount;
+    let raw = serviceAccountKey.trim();
+    // Strip wrapping single or double quotes if added in Vercel UI
+    if ((raw.startsWith("'") && raw.endsWith("'")) || (raw.startsWith('"') && raw.endsWith('"'))) {
+      raw = raw.slice(1, -1).trim();
+    }
+    // Check if base64 encoded
+    if (!raw.startsWith('{')) {
+      try {
+        const decoded = Buffer.from(raw, 'base64').toString('utf8');
+        if (decoded.startsWith('{')) raw = decoded;
+      } catch {
+        // Not base64
+      }
+    }
+    const serviceAccount = JSON.parse(raw);
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     return initializeApp({
       credential: cert(serviceAccount),
-      projectId: serviceAccount.projectId || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'raktmitra-1c5ea',
+      projectId: serviceAccount.project_id || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'raktmitra-1c5ea',
     });
   } catch (e) {
     console.error('[firebase-admin] Failed to parse service account key:', e);
