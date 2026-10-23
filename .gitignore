@@ -23,7 +23,9 @@
 # Sensitive credentials & service account keys
 service-account*.json
 *serviceAccount*.json
-firebase-adminsdk*.json
+*firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
+*.private.json
 
 # Debug / logs
 npm-debug.log*
