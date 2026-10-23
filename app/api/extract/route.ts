@@ -13,7 +13,17 @@ import { GoogleGenerativeAI, type GenerateContentResult } from '@google/generati
 import { extractionSchema } from '@/lib/types';
 import { checkRateLimit } from '@/lib/rate-limit';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+export const dynamic = 'force-dynamic';
+
+function getGeminiApiKey(): string | null {
+  return (
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_AI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
+    null
+  );
+}
 
 // In-memory cache for emergency extractions (TTL 5 minutes)
 interface CacheEntry {
@@ -64,10 +74,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Validate API key
-    if (!GEMINI_API_KEY) {
+    // 2. Validate API key dynamically
+    const geminiApiKey = getGeminiApiKey();
+    if (!geminiApiKey) {
       return NextResponse.json(
-        { success: false, error: 'Gemini API key not configured. Set GEMINI_API_KEY in environment variables.' },
+        {
+          success: false,
+          error:
+            'Gemini API key not configured. Add GEMINI_API_KEY to your Vercel Project Settings > Environment Variables and redeploy.',
+        },
         { status: 503 }
       );
     }
@@ -103,7 +118,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Call Gemini with fallback cascade
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const genAI = new GoogleGenerativeAI(geminiApiKey);
     const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
 
     let result: GenerateContentResult | null = null;
