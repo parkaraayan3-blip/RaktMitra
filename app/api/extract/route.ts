@@ -68,20 +68,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call Gemini
+    // Call Gemini with model fallbacks (gemini-3.8-flash, gemini-2.5-flash, gemini-1.5-flash)
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1, // Low temperature for consistent extraction
-      },
-    });
+    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
 
-    const result: GenerateContentResult = await model.generateContent([
-      { text: SYSTEM_PROMPT },
-      { text: `Emergency message to parse:\n\n"${rawMessage}"` },
-    ]);
+    let result: GenerateContentResult | null = null;
+    let lastError: any = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+          },
+        });
+        result = await model.generateContent([
+          { text: SYSTEM_PROMPT },
+          { text: `Emergency message to parse:\n\n"${rawMessage}"` },
+        ]);
+        if (result) break;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[extract] Model ${modelName} failed, trying next fallback:`, err?.message || err);
+      }
+    }
+
+    if (!result) {
+      throw lastError || new Error('All Gemini model fallbacks failed.');
+    }
 
     const responseText = result.response.text();
 
