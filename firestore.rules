@@ -1,0 +1,75 @@
+// ──────────────────────────────────────────────
+// Firestore Security Rules — RaktMitra AI
+// ──────────────────────────────────────────────
+// Deny-by-default. Only authenticated users can read/write their own data.
+// Sensitive collections (donorPrivate, notificationAttempts, auditEvents)
+// are server-only (admin SDK bypasses rules).
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Default: deny all ──
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ── Users ──
+    // Authenticated users can read/write their own user profile.
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow update: if request.auth != null && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    // ── Donors (public profile) ──
+    // Authenticated users can read/write their own donor profile.
+    // Server-side matching reads all donors via admin SDK.
+    match /donors/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null
+                     && request.auth.uid == uid
+                     && request.resource.data.keys().hasAll(['fullName', 'bloodGroup', 'city', 'whatsappOptIn', 'privacyConsent'])
+                     && request.resource.data.whatsappOptIn == true
+                     && request.resource.data.privacyConsent == true;
+      allow update: if request.auth != null && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    // ── Donor Private (RESTRICTED — server-only) ──
+    // No client-side access. Admin SDK only.
+    match /donorPrivate/{uid} {
+      allow read, write: if false;
+    }
+
+    // ── Emergency Requests ──
+    // Authenticated users can create requests.
+    // Only the request creator can read their own request.
+    match /emergencyRequests/{requestId} {
+      allow read: if request.auth != null
+                   && resource.data.requesterUid == request.auth.uid;
+      allow create: if request.auth != null;
+      allow update: if false; // Server-only updates
+      allow delete: if false;
+
+      // ── Matches (sub-collection) ──
+      // Read-only for the request creator. Writes are server-only.
+      match /matches/{donorId} {
+        allow read: if request.auth != null
+                     && get(/databases/$(database)/documents/emergencyRequests/$(requestId)).data.requesterUid == request.auth.uid;
+        allow write: if false;
+      }
+    }
+
+    // ── Notification Attempts (server-only) ──
+    match /notificationAttempts/{attemptId} {
+      allow read, write: if false;
+    }
+
+    // ── Audit Events (server-only) ──
+    match /auditEvents/{eventId} {
+      allow read, write: if false;
+    }
+  }
+}

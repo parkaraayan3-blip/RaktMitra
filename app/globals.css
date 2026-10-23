@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  color-scheme: dark;
+  --bg: #0B0D12;
+  --surface: #141820;
+  --elevated: #1B202A;
+  --border: #2B303B;
+  --accent: #F43F4F;
+  --text: #F8FAFC;
+  --text-secondary: #94A3B8;
+}
+
+/* === Base === */
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+/* === Focus styles === */
+button:focus-visible,
+a:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #fb7185;
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+/* === Scrollbar === */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2B303B;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3B4351;
+}
+
+/* === Glass card === */
+@layer components {
+  .glass {
+    @apply bg-bg-surface border border-border rounded-3xl;
+    backdrop-filter: blur(12px);
+  }
+
+  .glass-elevated {
+    @apply bg-bg-elevated border border-border rounded-3xl;
+  }
+
+  /* === Input fields === */
+  .field {
+    @apply bg-bg-input border border-border rounded-xl px-4 py-3 w-full text-text-primary
+      transition-all duration-200
+      placeholder:text-text-muted
+      hover:border-border-hover
+      focus:border-accent focus:ring-1 focus:ring-accent/30 focus:outline-none;
+  }
+
+  .field-textarea {
+    @apply field resize-y min-h-[120px];
+  }
+
+  /* === Buttons === */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2
+      rounded-xl px-5 py-3 font-semibold text-sm
+      transition-all duration-200 cursor-pointer
+      disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply bg-accent text-white
+      hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/20
+      active:scale-[0.97];
+  }
+
+  .btn-secondary {
+    @apply border border-border text-text-primary
+      hover:bg-bg-elevated hover:border-border-hover
+      active:scale-[0.97];
+  }
+
+  .btn-ghost {
+    @apply text-text-secondary
+      hover:text-text-primary hover:bg-bg-elevated
+      active:scale-[0.97];
+  }
+
+  .btn-success {
+    @apply bg-success text-white
+      hover:bg-green-600 hover:shadow-lg hover:shadow-success/20
+      active:scale-[0.97];
+  }
+
+  /* === Pill / Badge === */
+  .pill {
+    @apply inline-flex items-center gap-1.5
+      border border-border rounded-full
+      px-3 py-1.5 text-xs font-medium;
+  }
+
+  /* === Stat card === */
+  .stat-card {
+    @apply bg-bg-input border border-border rounded-2xl p-4;
+  }
+
+  /* === Status indicator === */
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-live {
+    @apply status-dot bg-success animate-pulse-soft;
+  }
+
+  .status-pending {
+    @apply status-dot bg-warning animate-pulse-soft;
+  }
+
+  .status-offline {
+    @apply status-dot bg-text-muted;
+  }
+
+  /* === Shimmer loading === */
+  .shimmer {
+    @apply bg-gradient-to-r from-bg-elevated via-border to-bg-elevated
+      bg-[length:200%_100%] animate-shimmer rounded-xl;
+  }
+}
+
+/* === Selection === */
+::selection {
+  background: rgba(244, 63, 79, 0.3);
+  color: #F8FAFC;
+}
